@@ -1,70 +1,120 @@
 from typing import Dict, Tuple
 
 import pandas as pd
+from typing import Dict, Tuple
+from kedro.io import MemoryDataset
+from datasets import Dataset
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.feature_extraction.text import TfidfVectorizer
+from nltk.stem import WordNetLemmatizer
+from nltk.stem import SnowballStemmer
+from nltk.tokenize import word_tokenize
+from nltk.stem.porter import PorterStemmer
+from nltk.corpus import stopwords
+import nltk
+import re
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt  # we only need pyplot
+sns.set()  # set the default Seaborn style for graphics
 
 
-def _is_true(x: pd.Series) -> pd.Series:
-    return x == "t"
+nltk.download('stopwords')
+nltk.download('wordnet')
+nltk.download('omw-1.4')
+
+stop_words = set(stopwords.words('english'))
+stemmer = SnowballStemmer("english")
+
+# function to remove stopwords
 
 
-def _parse_percentage(x: pd.Series) -> pd.Series:
-    x = x.str.replace("%", "")
-    x = x.astype(float) / 100
-    return x
+def remove_stopwords(text):
+    no_stopword_text = [w for w in text.split() if not w in stop_words]
+    return ' '.join(no_stopword_text)
+
+# Clean Text
 
 
-def _parse_money(x: pd.Series) -> pd.Series:
-    x = x.str.replace("$", "").str.replace(",", "")
-    x = x.astype(float)
-    return x
+def clean_text(text):
+    text = text.lower()
+    text = re.sub("[^a-zA-Z]", " ", text)
+    text = ' '.join(text.split())
+    return text
+
+# Stemming
 
 
-def preprocess_companies(companies: pd.DataFrame) -> Tuple[pd.DataFrame, Dict]:
-    """Preprocesses the data for companies.
+def stemming(sentence):
+    stemSentence = ""
+    for word in sentence.split():
+        stem = stemmer.stem(word)
+        stemSentence += stem
+        stemSentence += " "
+    stemSentence = stemSentence.strip()
+    return stemSentence
 
-    Args:
-        companies: Raw data.
-    Returns:
-        Preprocessed data, with `company_rating` converted to a float and
-        `iata_approved` converted to boolean.
-    """
-    companies["iata_approved"] = _is_true(companies["iata_approved"])
-    companies["company_rating"] = _parse_percentage(companies["company_rating"])
-    return companies, {"columns": companies.columns.tolist(), "data_type": "companies"}
+# preprocess description column on cleaning and stemming
 
 
-def preprocess_shuttles(shuttles: pd.DataFrame) -> pd.DataFrame:
-    """Preprocesses the data for shuttles.
+def preprocess_descriptions(train_data: pd.DataFrame):
+    # Ensure all values in 'Description' are strings and handle NaN values
+    train_data['Description'] = train_data['Description'].astype(
+        str).fillna('')
 
-    Args:
-        shuttles: Raw data.
-    Returns:
-        Preprocessed data, with `price` converted to a float and `d_check_complete`,
-        `moon_clearance_complete` converted to boolean.
-    """
-    shuttles["d_check_complete"] = _is_true(shuttles["d_check_complete"])
-    shuttles["moon_clearance_complete"] = _is_true(shuttles["moon_clearance_complete"])
-    shuttles["price"] = _parse_money(shuttles["price"])
-    return shuttles
+    # Apply your preprocessing functions
+    train_data['Description'] = train_data['Description'].apply(
+        lambda x: remove_stopwords(x))
+    train_data['Description'] = train_data['Description'].apply(
+        lambda x: clean_text(x))
+    train_data['Description'] = train_data['Description'].apply(stemming)
+
+    return train_data
 
 
-def create_model_input_table(
-    shuttles: pd.DataFrame, companies: pd.DataFrame, reviews: pd.DataFrame
-) -> pd.DataFrame:
-    """Combines all data to create a model input table.
+def one_hot_encode_column(df: pd.DataFrame, description_col: str, target_col: str) -> pd.DataFrame:
+    rows = []
+    unique_values = df[target_col].unique()
+    descriptions = df[description_col].unique()
+    for description in descriptions:
+        row = {'Description': description}
+        for unique_value in unique_values:
+            row[unique_value] = 1 if unique_value in df[df['Description']
+                                                        == description][target_col].values else 0
+        rows.append(row)
+    new_df = pd.DataFrame(rows, columns=['Description']+list(unique_values))
+    return new_df
 
-    Args:
-        shuttles: Preprocessed data for shuttles.
-        companies: Preprocessed data for companies.
-        reviews: Raw data for reviews.
-    Returns:
-        Model input table.
 
-    """
-    rated_shuttles = shuttles.merge(reviews, left_on="id", right_on="shuttle_id")
-    rated_shuttles = rated_shuttles.drop("id", axis=1)
-    model_input_table = rated_shuttles.merge(
-        companies, left_on="company_id", right_on="id"
-    )
-    model_input_table = model_input_table.dropna()
-    return model_input_table
+def create_encoded_df(df: pd.DataFrame, description_col: str, target_col: str):
+    unique_departments = df['Department'].unique()
+    partitioned_data = {}
+    for department in unique_departments:
+        df_department = df[df['Department'] == department]
+        encoded_df = one_hot_encode_column(
+            df_department, description_col, target_col)
+        partitioned_data[department] = encoded_df
+    return partitioned_data
+
+
+def create_department_encoded_df(df: pd.DataFrame) -> dict:
+    return one_hot_encode_column(df[['Description', 'Department']], 'Description', 'Department')
+
+
+def create_techgroup_encoded_df(df: pd.DataFrame) -> dict:
+    return create_encoded_df(df, description_col="Description", target_col="Tech Group")
+
+
+def create_subcategory_encoded_df(df: pd.DataFrame) -> dict:
+    return create_encoded_df(df, description_col="Description", target_col="Sub-Category")
+
+
+def create_category_encoded_df(df: pd.DataFrame) -> dict:
+    return create_encoded_df(df, description_col="Description", target_col="Category")
+
+
+def merge_datasets(department_df: pd.DataFrame, category_df: pd.DataFrame) -> pd.DataFrame:
+    merged_df = pd.merge(department_df, category_df,
+                         on='Description', how='inner')
+    return merged_df
