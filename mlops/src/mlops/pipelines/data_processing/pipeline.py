@@ -68,5 +68,29 @@ def create_pipeline(**kwargs) -> Pipeline:
                 outputs=["train_subcategory_dir", "test_subcategory_dir"],
                 name="split_subcategory_and_transform_to_dataset_node"
             ),
+
+            # node(
+            #     func=split_data,
+            #     inputs=["techgroup_encoded_dir","params:model_options"],
+            #     outputs=["train", "test"]
+            # )
+            # node(
+            #     func=data_split,
+            #     inputs=["model_input_table@pandas", "params:model_options"],
+            #     outputs=["X_train", "X_test", "y_train", "y_test"],
+            #     name="split_data_node",
+            # ),
+            # node(
+            #     func=train_model,
+            #     inputs=["X_train", "y_train"],
+            #     outputs="regressor",
+            #     name="train_model_node",
+            # ),
+            # node(
+            #     func=evaluate_model,
+            #     inputs=["regressor", "X_test", "y_test"],
+            #     outputs="metrics",
+            #     name="evaluate_model_node",
+            # ),
         ]
     )
