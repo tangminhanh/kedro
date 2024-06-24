@@ -1,42 +1,184 @@
+from transformers import AutoTokenizer
+import json
+import os
+from transformers import AutoModelForSequenceClassification, TrainingArguments, Trainer, DataCollatorWithPadding
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+import numpy as np
+from torch.optim import AdamW
+from transformers.optimization import AdamW
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, Trainer, TrainingArguments, DataCollatorWithPadding
 import logging
 from typing import Dict, Tuple
+from datasets import Dataset
+from datasets import load_from_disk
+from typing import Dict
+from kedro.io import AbstractDataset
 
 import pandas as pd
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import max_error, mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
+from kedro_datasets.partitions import PartitionedDataset
 
 
-def split_data(data: pd.DataFrame, parameters: Dict) -> Tuple:
-    """Splits data into features and targets training and test sets.
+def split_department_data(df: pd.DataFrame, parameters: Dict):
+    train_df, test_df = train_test_split(
+        df, test_size=parameters["test_size"], random_state=parameters["random_state"])
+    return train_df, test_df
 
-    Args:
-        data: Data containing features and target.
-        parameters: Parameters defined in parameters/data_science.yml.
-    Returns:
-        Split data.
-    """
-    X = data[parameters["features"]]
-    y = data["price"]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=parameters["test_size"], random_state=parameters["random_state"]
+
+def split_df_to_dataset(encoded_dir: PartitionedDataset, parameters: Dict) -> Dict[str, Dict[str, pd.DataFrame]]:
+    test_size = parameters["test_size"]
+    random_state = parameters["random_state"]
+    partitioned_data = {
+        "train": {},
+        "test": {}
+    }
+    for tech_group, partition_load_func in encoded_dir.items():
+        # Load the data for the current partition
+        partition_data = partition_load_func()
+        # Split the partitioned data into train and test sets
+        train_df, test_df = train_test_split(
+            partition_data, test_size=test_size, random_state=random_state)
+        train_df, test_df = dataframe_to_dataset(train_df, test_df)
+        # Store the train and test sets in partitioned_data dictionary
+        partitioned_data["train"][tech_group] = train_df
+        partitioned_data["test"][tech_group] = test_df
+    return partitioned_data["train"], partitioned_data["test"]
+
+
+def dataframe_to_dataset(train, test):
+    train_dataset = Dataset.from_pandas(train)
+    test_dataset = Dataset.from_pandas(test)
+    return train_dataset, test_dataset
+
+
+def department_label_encoding(train_dataset) -> Tuple[Dict[str, int], Dict[int, str]]:
+    output_dir = "data/04_feature/department_label_encoded_dir"
+    os.makedirs(output_dir, exist_ok=True)
+    labels = [col for col in train_dataset.column_names if col != 'Description']
+
+    label2id = {label: idx for idx, label in enumerate(labels)}
+    id2label = {idx: label for label, idx in label2id.items()}
+
+    return label2id, id2label
+
+
+model_path = 'microsoft/deberta-v3-small'
+tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=False)
+
+
+def preprocess_function(train_dataset, test_dataset, department2id):
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+    def process_dataset(dataset, department2id):
+        texts = dataset["Description"]
+        departments = [
+            col for col in dataset.column_names if col != 'Description']
+        labels_list = []
+
+        for example in dataset:
+            labels = [0. for _ in range(len(departments))]
+            for department in departments:
+                if example[department] == 1:
+                    label_id = department2id[department]
+                    labels[label_id] = 1.
+            labels_list.append(labels)
+
+        encoded_texts = tokenizer(
+            texts,
+            truncation=True,
+            padding='max_length',
+            max_length=512
+        )
+
+        encoded_dict = {key: val for key, val in encoded_texts.items()}
+        encoded_dict['labels'] = labels_list
+
+        return Dataset.from_dict(encoded_dict)
+
+    tokenized_train_dataset = process_dataset(train_dataset, department2id)
+    tokenized_test_dataset = process_dataset(test_dataset, department2id)
+
+    return tokenized_train_dataset, tokenized_test_dataset
+
+
+def train_model(tokenized_train_dataset, tokenized_test_dataset, label2id, id2label, model_path='microsoft/deberta-v3-small'):
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+    # Load the model
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_path,
+        num_labels=len(label2id),
+        id2label=id2label,
+        label2id=label2id,
+        problem_type="multi_label_classification"
     )
-    return X_train, X_test, y_train, y_test
+
+    # Load the tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+
+    # Define metrics computation
+    def compute_metrics(eval_pred):
+        labels = eval_pred.label_ids
+        predictions = eval_pred.predictions.argmax(-1)
+        accuracy = accuracy_score(labels, predictions)
+        f1 = f1_score(labels, predictions, average='micro')
+        precision = precision_score(labels, predictions, average='micro')
+        recall = recall_score(labels, predictions, average='micro')
+        return {"accuracy": accuracy, "f1": f1, "precision": precision, "recall": recall}
+
+    # Training arguments with reduced verbosity
+    training_args = TrainingArguments(
+        output_dir="model",
+        learning_rate=2e-5,
+        per_device_train_batch_size=3,
+        per_device_eval_batch_size=3,
+        num_train_epochs=2,
+        weight_decay=0.01,
+        evaluation_strategy="epoch",
+        save_strategy="epoch",
+        load_best_model_at_end=True,
+        logging_dir='logs',  # Reduced verbosity in logging
+        logging_strategy='steps',  # Reduced verbosity in logging
+    )
+
+    # Initialize the optimizer
+    optimizer = AdamW(model.parameters(), lr=5e-5)
+
+    # Trainer setup
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=tokenized_train_dataset,
+        eval_dataset=tokenized_test_dataset,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
+        compute_metrics=compute_metrics,
+        optimizers=(optimizer, None)
+    )
+
+    # Train and save the model
+    trainer.train()
+    trainer.save_model()
+
+    return model
 
 
-def train_model(X_train: pd.DataFrame, y_train: pd.Series) -> LinearRegression:
-    """Trains the linear regression model.
+# def train_model(X_train: pd.DataFrame, y_train: pd.Series) -> LinearRegression:
+#     """Trains the linear regression model.
 
-    Args:
-        X_train: Training data of independent features.
-        y_train: Training data for price.
+#     Args:
+#         X_train: Training data of independent features.
+#         y_train: Training data for price.
 
-    Returns:
-        Trained model.
-    """
-    regressor = LinearRegression()
-    regressor.fit(X_train, y_train)
-    return regressor
+#     Returns:
+#         Trained model.
+#     """
+#     regressor = LinearRegression()
+#     regressor.fit(X_train, y_train)
+#     return regressor
 
 
 def evaluate_model(
