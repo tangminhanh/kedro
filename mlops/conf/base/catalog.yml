@@ -96,29 +96,29 @@ test_category_dir:
 train_subcategory_dir:
   type: partitions.PartitionedDataset
   path: data/03_primary/train_test_subcategory/dataset/train
-  dataset: testing.io.huggingface_dataset.HuggingFaceDataset
+  dataset: mlops.io.huggingface_dataset.HuggingFaceDataset
   # filename_suffix: 
 
 test_subcategory_dir:
   type: partitions.PartitionedDataset
   path: data/03_primary/train_test_subcategory/dataset/test
-  dataset: testing.io.huggingface_dataset.HuggingFaceDataset
+  dataset: mlops.io.huggingface_dataset.HuggingFaceDataset
   # filename_suffix: ".csv"
 
 train_department_dataset:
-  type: testing.io.huggingface_dataset.HuggingFaceDataset
+  type: mlops.io.huggingface_dataset.HuggingFaceDataset
   filepath: data/03_primary/train_test_department/dataset/train_department
 
 test_department_dataset:
-  type: testing.io.huggingface_dataset.HuggingFaceDataset
+  type: mlops.io.huggingface_dataset.HuggingFaceDataset
   filepath: data/03_primary/train_test_department/dataset/test_department
 
 tokenized_train_department_dataset: 
-  type: "testing.io.huggingface_dataset.HuggingFaceDataset"
+  type: "mlops.io.huggingface_dataset.HuggingFaceDataset"
   filepath: "data/05_model_input/tokenized_department_dataset/train"
 
 tokenized_test_department_dataset:
-  type: "testing.io.huggingface_dataset.HuggingFaceDataset"
+  type: "mlops.io.huggingface_dataset.HuggingFaceDataset"
   filepath: "data/05_model_input/tokenized_department_dataset/test"
     
 department2id: 
