@@ -1,4 +1,5 @@
 model_options:
+  model_path: 'microsoft/deberta-v3-small'
   test_size: 0.2
   random_state: 3
   features:
@@ -10,3 +11,15 @@ model_options:
     - iata_approved
     - company_rating
     - review_scores_rating
+  departments: 
+    - Cutomer Sucess
+    - Document Controller
+    - Engineering
+    - Finance
+    - HR
+    - Legal & Compliance
+    - Marketing
+    - Operations Team
+    - Projects & Design
+    - Service Delivery External
+    - Technology Services
