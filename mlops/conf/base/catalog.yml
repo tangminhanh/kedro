@@ -1,43 +1,137 @@
-# Here you can define all your data sets by using simple YAML syntax.
-#
-# Documentation for this file format can be found in "The Data Catalog"
-# Link: https://kedro.readthedocs.io/en/stable/data/data_catalog.html
-#
-# We support interacting with a variety of data stores including local file systems, cloud, network and HDFS
-#
-# An example data set definition can look as follows:
-#
-#bikes:
-#  type: pandas.CSVDataset
-#  filepath: "data/01_raw/bikes.csv"
-#
-#weather:
-#  type: spark.SparkDataset
-#  filepath: s3a://your_bucket/data/01_raw/weather*
-#  file_format: csv
-#  credentials: dev_s3
-#  load_args:
-#    header: True
-#    inferSchema: True
-#  save_args:
-#    sep: '|'
-#    header: True
-#
-#scooters:
-#  type: pandas.SQLTableDataset
-#  credentials: scooters_credentials
-#  table_name: scooters
-#  load_args:
-#    index_col: ['name']
-#    columns: ['name', 'gear']
-#  save_args:
-#    if_exists: 'replace'
-#    # if_exists: 'fail'
-#    # if_exists: 'append'
-#
-# The Data Catalog supports being able to reference the same file using two different Dataset implementations
-# (transcoding), templating and a way to reuse arguments that are frequently repeated. See more here:
-# https://kedro.readthedocs.io/en/stable/data/data_catalog.html
+original_ref:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/ref.csv
+  load_args:
+    sep: ","
+    encoding: "latin1"
+  save_args:
+    index: False
+
+cate_ref:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/update.csv
+  load_args:
+    sep: ","
+    encoding: "latin1"
+  save_args:
+    index: False
+
+merged_df:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/merged.csv
+  load_args:
+    sep: ","
+    encoding: "latin1"
+  save_args:
+    index: False
+
+preprocessed_ref:
+  type: pandas.CSVDataset
+  filepath: data/02_intermediate/preprocessed_ref.csv
+  save_args:
+    index: False
+
+cate_preprocessed_ref:
+  type: pandas.CSVDataset
+  filepath: data/02_intermediate/cate_preprocessed_ref.csv
+  save_args:
+    index: False
+
+department_encoded_df:
+  filepath: data/02_intermediate/department_encoded_dir/department_encoded_df.csv
+  type: pandas.CSVDataset
+  save_args:
+    index: False
+
+techgroup_encoded_dir:
+  type: partitions.PartitionedDataset
+  path: data/02_intermediate/techgroup_encoded_dir
+  dataset: pandas.CSVDataset
+  filename_suffix: ".csv"
+
+category_encoded_dir:
+  type: partitions.PartitionedDataset
+  path: data/02_intermediate/category_encoded_dir
+  dataset: pandas.CSVDataset
+  filename_suffix: ".csv"
+
+subcategory_encoded_dir:
+  type: partitions.PartitionedDataset
+  path: data/02_intermediate/subcategory_encoded_dir
+  dataset: pandas.CSVDataset
+  filename_suffix: ".csv"
+
+train_department_df:
+  filepath: data/03_primary/train_test_department/df/train_department.csv
+  type: pandas.CSVDataset
+
+test_department_df:
+  filepath: data/03_primary/train_test_department/df/test_department.csv
+  type: pandas.CSVDataset
+
+train_techgroup_dir:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/train_test_techgroup/df/train
+  dataset: pandas.CSVDataset
+  filename_suffix: ".csv"
+
+test_techgroup_dir:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/train_test_techgroup/df/test
+  dataset: pandas.CSVDataset
+  filename_suffix: ".csv"
+
+train_category_dir:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/train_test_category/df/train
+  dataset: pandas.CSVDataset
+  filename_suffix: ".csv"
+
+test_category_dir:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/train_test_category/df/test
+  dataset: pandas.CSVDataset
+  filename_suffix: ".csv"
+
+train_subcategory_dir:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/train_test_subcategory/dataset/train
+  dataset: testing.io.huggingface_dataset.HuggingFaceDataset
+  # filename_suffix: 
+
+test_subcategory_dir:
+  type: partitions.PartitionedDataset
+  path: data/03_primary/train_test_subcategory/dataset/test
+  dataset: testing.io.huggingface_dataset.HuggingFaceDataset
+  # filename_suffix: ".csv"
+
+train_department_dataset:
+  type: testing.io.huggingface_dataset.HuggingFaceDataset
+  filepath: data/03_primary/train_test_department/dataset/train_department
+
+test_department_dataset:
+  type: testing.io.huggingface_dataset.HuggingFaceDataset
+  filepath: data/03_primary/train_test_department/dataset/test_department
+
+tokenized_train_department_dataset: 
+  type: "testing.io.huggingface_dataset.HuggingFaceDataset"
+  filepath: "data/05_model_input/tokenized_department_dataset/train"
+
+tokenized_test_department_dataset:
+  type: "testing.io.huggingface_dataset.HuggingFaceDataset"
+  filepath: "data/05_model_input/tokenized_department_dataset/test"
+    
+department2id: 
+    type: "pickle.PickleDataset"
+    filepath: "data/04_feature/department_label_encoded_dir/label2id.pkl"
+
+id2department: 
+    type: "pickle.PickleDataset"
+    filepath: "data/04_feature/department_label_encoded_dir/id2label.pkl"
+    
+trained_model:
+  type: pickle.PickleDataset
+  filepath: data/06_models/trained_model
 
 companies:
   type: pandas.CSVDataset
