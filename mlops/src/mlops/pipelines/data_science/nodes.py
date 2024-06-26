@@ -122,7 +122,7 @@ def train_model(tokenized_train_dataset, tokenized_test_dataset, label2id, id2la
     # Define metrics computation
     def compute_metrics(eval_pred):
         labels = eval_pred.label_ids
-        predictions = eval_pred.predictions.argmax(-1)
+        predictions = (eval_pred.predictions > 0).astype(int)  # For multi-label classification
         accuracy = accuracy_score(labels, predictions)
         f1 = f1_score(labels, predictions, average='micro')
         precision = precision_score(labels, predictions, average='micro')
