@@ -1,0 +1,15 @@
+artifact_uri: file:///Users/tangminhanh/Downloads/kedro/mlops/mlruns/482842104210027245/993f51179459429ba480ee8c717f0d37/artifacts
+end_time: 1719365631617
+entry_point_name: ''
+experiment_id: '482842104210027245'
+lifecycle_stage: active
+run_id: 993f51179459429ba480ee8c717f0d37
+run_name: __default__
+run_uuid: 993f51179459429ba480ee8c717f0d37
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1719365612350
+status: 3
+tags: []
+user_id: tangminhanh
