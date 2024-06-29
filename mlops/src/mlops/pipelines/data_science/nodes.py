@@ -1,3 +1,4 @@
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, DataCollatorWithPadding, Trainer, TrainingArguments, AdamW
 from transformers import AutoTokenizer
 import json
 import os
@@ -122,7 +123,8 @@ def train_model(tokenized_train_dataset, tokenized_test_dataset, label2id, id2la
     # Define metrics computation
     def compute_metrics(eval_pred):
         labels = eval_pred.label_ids
-        predictions = (eval_pred.predictions > 0).astype(int)  # For multi-label classification
+        predictions = (eval_pred.predictions > 0).astype(
+            int)  # For multi-label classification
         accuracy = accuracy_score(labels, predictions)
         f1 = f1_score(labels, predictions, average='micro')
         precision = precision_score(labels, predictions, average='micro')
@@ -198,3 +200,73 @@ def evaluate_model(
     logger = logging.getLogger(__name__)
     logger.info("Model has a coefficient R^2 of %.3f on test data.", score)
     return {"r2_score": score, "mae": mae, "max_error": me}
+
+
+def train_model(tokenized_train_dataset, tokenized_test_dataset, label2id, id2label, model_path='microsoft/deberta-v3-small'):
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+    # Load the model
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_path,
+        num_labels=len(label2id),
+        id2label=id2label,
+        label2id=label2id,
+        problem_type="multi_label_classification"
+    )
+
+    # Move model to GPU if available
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model.to(device)
+
+    # Load the tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+
+    # Define metrics computation
+    def compute_metrics(eval_pred):
+        labels = eval_pred.label_ids
+        predictions = (eval_pred.predictions > 0).astype(
+            int)  # For multi-label classification
+        accuracy = accuracy_score(labels, predictions)
+        f1 = f1_score(labels, predictions, average='micro')
+        precision = precision_score(labels, predictions, average='micro')
+        recall = recall_score(labels, predictions, average='micro')
+        return {"accuracy": accuracy, "f1": f1, "precision": precision, "recall": recall}
+
+    # Training arguments with reduced verbosity
+    training_args = TrainingArguments(
+        output_dir="model",
+        learning_rate=2e-5,
+        per_device_train_batch_size=3,
+        per_device_eval_batch_size=3,
+        num_train_epochs=2,
+        weight_decay=0.01,
+        evaluation_strategy="epoch",
+        save_strategy="epoch",
+        load_best_model_at_end=True,
+        logging_dir='logs',  # Reduced verbosity in logging
+        logging_strategy='steps',  # Reduced verbosity in logging
+        # Ensure GPU utilization
+        fp16=torch.cuda.is_available(),  # Use mixed precision training if GPU is available
+    )
+
+    # Initialize the optimizer
+    optimizer = AdamW(model.parameters(), lr=5e-5)
+
+    # Trainer setup
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=tokenized_train_dataset,
+        eval_dataset=tokenized_test_dataset,
+        tokenizer=tokenizer,
+        data_collator=data_collator,
+        compute_metrics=compute_metrics,
+        optimizers=(optimizer, None)
+    )
+
+    # Train and save the model
+    trainer.train()
+    trainer.save_model()
+
+    return model
